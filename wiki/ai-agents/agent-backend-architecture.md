@@ -66,7 +66,7 @@ Hucci写代码 用一个 11 分钟的动手示例，把"Agent 就是循环"落�
 
 这篇视频补的是**实现层**，两篇 harness 文章讲的是**概念与组件层**：
 
-- [Agent Harness 解剖](agent-harness-anatomy.md) 把 orchestration loop 称为 harness 的心跳（该条目已并入 LangChain 原文的组件推导与对照）；本视频给出这条心跳在代码里怎么分层、怎么注入依赖。
+- [Agent Harness 解剖](agent-harness-anatomy.md) 把 orchestration loop 称为 harness 的心跳；本视频给出这条心跳在代码里怎么分层、怎么注入依赖。
 - [Agent Harness 解剖](agent-harness-anatomy.md) 列的 guardrails 与权限层，在本视频里被具体化为「审核调用 + decision 类型 + 拒绝原因回灌」这一条最小实现；两篇提到的 `max_iterations`、双模型、工具 schema 也都能在这里找到落点。
 - *归纳*：如果要用一句话概括三者关系——两篇文章回答"harness 有哪些部件"，这个视频回答"这些部件怎么组织成不吃屎的代码"。
 

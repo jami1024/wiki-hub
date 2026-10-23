@@ -8,3 +8,5 @@
 | 2026-10-23 | update | [ai-agents/agent-harness-anatomy](ai-agents/agent-harness-anatomy.md) | https://x.com/akshay_pachaar/article/2041146899319971922 | 补“源流与对照”小节 + 关联条目互链 + Ralph 归因冲突指引；核心事实未改 |
 | 2026-10-23 | ingest | [ai-agents/agent-backend-architecture](ai-agents/agent-backend-architecture.md) | https://www.bilibili.com/video/BV1winH6DEgt/ | 视频无字幕轨，音频经 whisper large-v3-turbo 转写（135 段/4800 字）；raw 保留 ASR 原文 + 同音误识对照表 |
 | 2026-10-23 | merge | [ai-agents/agent-harness-anatomy](ai-agents/agent-harness-anatomy.md) | — | 将 agent-harness-langchain 的 12 维对照表、TerminalBench 补充事实与 Ralph 归因冲突并入本条，删除独立条目；两篇 raw 均保留，对照来源写入 frontmatter |
+| 2026-10-23 | update | [ai-agents/agent-harness-anatomy](ai-agents/agent-harness-anatomy.md) | — | 按用户要求移除「与 LangChain 原文的对照」整节及 frontmatter 第二来源；Ralph Loop 归因疑点缩为一条内联备注；raw 文件保留未删 |
+| 2026-10-23 | cleanup | — | https://www.langchain.com/blog/the-anatomy-of-an-agent-harness | 删除已无条目引用的 raw/ai-agents/agent-harness-anatomy-langchain.md；原页可重新抓取 |

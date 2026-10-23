@@ -3,7 +3,6 @@ title: Agent Harness 解剖：模型之外的工程才是产品
 topic: ai-agents
 source:
   - ../../raw/ai-agents/agent-harness-anatomy.md
-  - ../../raw/ai-agents/agent-harness-anatomy-langchain.md
 status: draft
 updated_at: 2026-10-23
 ---
@@ -13,31 +12,6 @@ updated_at: 2026-10-23
 ## 一句话摘要
 
 Akshay Pachaar 汇总 Anthropic、OpenAI、LangChain、CrewAI、AutoGen 等实现，论证“agent = 模型 + harness”，并给出生产级 harness 的组件清单、单轮循环的七个步骤、以及每个架构师必须做的七个取舍。
-
-## 与 LangChain 原文的对照
-
-本文（2026-04-06）晚于 Vivek Trivedy 在 LangChain 博客的同名文章（2026-03-10）27 天，并直接引用其「If you're not the model, you're the harness」与 TerminalBench「Top 30 → Top 5」实验。Akshay 的增量在跨厂商横向汇总，LangChain 的增量在从模型缺口纵向推导每个 primitive 为何存在。
-
-| 维度 | LangChain / Vivek Trivedy（2026-03-10） | Akshay Pachaar（2026-04-06） |
-| --- | --- | --- |
-| 组织方法 | 从模型缺口**反推**（behavior → design），公理式 | 跨厂商**横向汇总**，清单式 |
-| 组件划分 | 不设固定数量，六组 primitive | 宣称 12 项、实列 11 项 |
-| filesystem 地位 | **最基础 primitive**，独立成节 | 未单列；状态管理讲 typed dict / git checkpoint |
-| sandbox | 独立成节：安全 + 按需扩缩 + allow-list/网络隔离 | 仅一句「在沙箱环境执行」 |
-| bash 作为通用工具 | 独立成节，「给模型一台计算机」 | 未成节（Tools 一节讲 schema 注册与校验） |
-| skills | 作为 context rot 对策，progressive disclosure | **完全未提** |
-| hooks/middleware | 独立的确定性执行层（compaction、continuation、lint） | 无独立层，散布在各组件描述中 |
-| 记忆实现锚点 | AGENTS.md 文件标准 + Web Search/MCP | CLAUDE.md/MEMORY.md、LangGraph Store、OpenAI Sessions、三级记忆 |
-| ReAct 的称呼 | ReAct loop | TAO（Thought-Action-Observation） |
-| 共演化证据 | 一手可核验：Codex-5.3 prompting guide 的 apply_patch、TerminalBench leaderboard | 一句断言，无出处 |
-| 生产策略细节 | 少（偏概念推导） | 多（Stripe 重试上限 2 次、~40 个工具门控、1k–2k token 子 agent 摘要） |
-| 反向结论 | 不必沿用模型 post-train 时的 harness | 未强调；主线是脚手架会被拆除 |
-
-*归纳*：两份清单不冲突，是不同切面。LangChain 切「模型缺什么 → 补什么 primitive」，Akshay 切「一条请求经过哪些环节」。前者解释为什么有这些部件，后者解释怎么串起来跑一轮。
-
-**TerminalBench 的补充事实**：LangChain 补了一个 Akshay 没写的点——Opus 4.6 在 Claude Code 里的分数远低于同一个 Opus 4.6 配其他 harness，直接反驳「官方 harness 最优」。
-
-**Ralph Loop 归因冲突**：Akshay 写「Anthropic developed a two-phase "Ralph Loop" pattern」，链接 `anthropic.com/research/long-running-Claude`；LangChain 链到 `ghuntley.com/loop/`。后者已核实：Huntley 自引「the original ralph post」，把 Ralph 定义为单仓库、单进程、每轮一个任务的 orchestrator 模式，页面发布 2026-01-17。判断：Ralph 概念源自 Huntley 的可能性更大，Anthropic 更可能是把它做成两阶段实现；引用 Akshay 时应改为「Anthropic 采用的 Ralph 变体」。
 
 ## 核心判断
 
@@ -113,7 +87,6 @@ Anthropic 的 "Ralph Loop" 两阶段：**Initializer Agent** 先搭环境（init
 ## 关联条目
 
 - [Agent 后端的三层架构：从循环到可维护系统](agent-backend-architecture.md) — 实现层：把同一个循环拆成领域/应用/适配三层，并用另一次模型调用审核工具调用。
-- [Agent Harness 解剖：模型之外的工程才是产品](agent-harness-anatomy.md) — 同一来源的整理，概念上与本条互补。
 - 尚未入库、仅搜索所见（未核实）：Addy Osmani `addyosmani.com/blog/agent-harness-engineering/`；Arize、Snowflake、puppygraph 的 "what is an agent harness" 术语条目。
 
 ## 未解决问题
@@ -123,16 +96,12 @@ Anthropic 的 "Ralph Loop" 两阶段：**Initializer Agent** 先搭环境（init
 - 76.4% 通过率的"separate research project"未具名，无法回溯。
 - TerminalBench 2.0 的排名变化（top 30 外 → 第 5）未给评测快照或日期。
 - ACON、LLMCompiler 等研究仅有一句结论，未附论文链接。
-- 原文关于 Claude Code 内部机制（~40 个工具能力、三级记忆、Ralph Loop）属二手转述，未标注 Anthropic 官方出处，引用时应回溯一手文档。
-- Ralph Loop 被归给 Anthropic，与 LangChain 篇归给 Geoffrey Huntley 冲突；证据与判断见上文「与 LangChain 原文的对照」末段。
+- 原文关于 Claude Code 内部机制（~40 个工具能力、三级记忆、Ralph Loop）属二手转述，未标注 Anthropic 官方出处，引用时应回溯一手文档；Ralph Loop 被归给 Anthropic，但 `ghuntley.com/loop/`（2026-01-17）自引「the original ralph post」，更可能是 Huntley 提出的模式，Anthropic 做了两阶段实现。
 
 ## 来源
 
 - raw：`../../raw/ai-agents/agent-harness-anatomy.md`（正文全文 + 获取途径与清洗说明）
-- raw（对照来源）：`../../raw/ai-agents/agent-harness-anatomy-langchain.md`
 - 原始 URL：https://x.com/akshay_pachaar/article/2041146899319971922
-- 对照 URL：https://www.langchain.com/blog/the-anatomy-of-an-agent-harness（Vivek Trivedy，2026-03-10）
-- 第三方核实：https://ghuntley.com/loop/（Ralph Loop 归因，2026-01-17）
 - 作者：Akshay Pachaar (@akshay_pachaar)
 - 发布：2026-04-06T13:31:58Z（据 X status API 时间戳与转录页元数据）
 - 抓取：2026-10-23
