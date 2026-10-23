@@ -1,0 +1,5 @@
+# 指向仓库外 my-skills/skills/content/ 的本地符号链接，clone 后无法解析
+.pi/skills/*
+
+# macOS
+.DS_Store
