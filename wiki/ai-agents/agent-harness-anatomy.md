@@ -4,104 +4,100 @@ topic: ai-agents
 source:
   - ../../raw/ai-agents/agent-harness-anatomy.md
 status: draft
-updated_at: 2026-10-23
+updated_at: 2026-10-27
 ---
 
 # Agent Harness 解剖：模型之外的工程才是产品
 
-## 一句话摘要
+## 摘要
 
-Akshay Pachaar 汇总 Anthropic、OpenAI、LangChain、CrewAI、AutoGen 等实现，论证“agent = 模型 + harness”，并给出生产级 harness 的组件清单、单轮循环的七个步骤、以及每个架构师必须做的七个取舍。
+为什么一个能演示的 Agent，执行真实任务时仍会忘记进度、丢失工具错误、耗尽上下文？Akshay Pachaar 的回答是：需要检查模型外围的整套运行系统，也就是 harness。它负责组织模型输入、执行工具、保存状态、处理失败并验证结果。文章的主线是让这些职责形成可靠的反馈循环，同时持续检查哪些控制可以随模型能力提升而简化；文中的厂商实现与性能数字主要是作者转述，本条目未逐项独立核实。
 
-## 核心判断
+## 1. Harness 把一次模型调用连接成持续工作的系统
 
-1. **失败的 agent 首先要怀疑 harness，而不是模型。** 原文开篇即把 demo 到生产之间的塌方归因于模型外围：「The problem isn't your model. It's everything around your model.」定位：*正文第 3 段*。
-2. **harness 有定义边界，且被官方文档采用。** Anthropic 称 SDK 是「the agent harness that powers Claude Code」；OpenAI Codex 团队把 "agent" 与 "harness" 等同，指非模型基础设施。定位：*What Is the Agent Harness? 第 1 段*。
-3. **agent 是涌现行为，harness 是产生该行为的机器。** 「When someone says "I built an agent," they mean they built a harness and pointed it at a model.」定位：*What Is the Agent Harness? 第 3 段*。
-4. **harness 对应计算机体系结构，而非“提示词包装”。** 借 Beren Millidge 的类比：context window 是 RAM、外部数据库是磁盘、工具是设备驱动、**harness 是操作系统**，结论是「We have reinvented the Von Neumann architecture」。定位：*What Is the Agent Harness? 第 4 段*。
-5. **三层工程是包含关系，不是并列。** prompt engineering 管指令、context engineering 管“模型看到什么、何时看到”、harness engineering 涵盖两者加全部应用基础设施。「The harness is not a wrapper around a prompt.」定位：*Three Levels of Engineering*。
-6. **换 harness 不换模型，排名可以翻天。** 同权重同模型，LangChain 只改外围基础设施就「jumped from outside the top 30 to rank 5 on TerminalBench 2.0」；另有研究让 LLM 自行优化该基础设施，达到 76.4% 通过率，超过人工设计系统。定位：*正文第 2 段*；同类结论复述于 *The Harness Is the Product* 第 1 段（"moved agents by 20+ ranking positions"）。
-7. **上下文是稀缺资源，且位置比长度更致命。** context rot：关键内容落在窗口中部时性能下降 30%+（Chroma 研究，与 Stanford "Lost in the Middle" 互证）；即百万 token 窗口也逃不过指令遵循衰减。定位：*Context Management* 第 1 段。
-8. **错误会复利，所以错误处理是架构问题。** 「a 10-step process with 99% per-step success still has only ~90.4% end-to-end success」。定位：*Error Handling* 第 1 段。
-9. **验证回路是玩具与生产的分界线。** 三类手段：规则反馈（测试/lint/类型检查）、视觉反馈（Playwright 截图）、LLM-as-judge；Claude Code 作者 Boris Cherny 称「giving the model a way to verify its work improves quality by 2 to 3x」。定位：*Verification Loops*。
-10. **先最大化单 agent，再谈多 agent。** Anthropic 与 OpenAI 共同建议；拆分门槛是工具过载超过 ~10 个重叠工具，或任务域明显分离。定位：*Seven Decisions* 第 1 条。
-11. **harness 应随模型变强而变薄（脚手架隐喻）。** 建筑脚手架在楼建成后拆除；Manus 六个月内重写五次，每次都在删复杂度：「Complex tool definitions became general shell execution. "Management agents" became simple structured handoffs.」定位：*The Scaffolding Metaphor* 第 2 段。
-12. **设计好坏有一个可证伪的测试。** 「if performance scales up with more powerful models without adding harness complexity, the design is sound.」定位：*The Scaffolding Metaphor* 末段（原文称 "future-proofing test"）。*归纳*：这条其实等价于“harness 不应替代模型能力，只应补模型缺口”。
-13. **harness 不是会商品化的中间层。** 「The harness is not a solved problem or a commodity layer. It's where the hard engineering lives.」定位：*The Harness Is the Product* 第 2 段。
+作者把 Agent 区分为两部分：用户看到的是能朝目标行动、使用工具、根据结果调整的行为；支撑这种行为的，是包围模型的基础设施。原文用一句话概括其范围：
 
-## 证据与关键数字
+> “If you're not the model, you're the harness.”
 
-| 数字 | 含义 | 定位 |
-| --- | --- | --- |
-| top 30 外 → 第 5 | LangChain 仅改 harness 后的 TerminalBench 2.0 排名 | 正文第 2 段 |
-| 76.4% | LLM 自优化 harness 的通过率（超过人工设计） | 正文第 2 段 |
-| 30%+ | 关键内容位于窗口中部时的性能下降 | Context Management |
-| ~150 字符 | Claude Code 记忆索引每条体积（始终加载） | Memory |
-| 1,000–2,000 token | 每个 subagent 只回传的浓缩摘要长度 | Context Management |
-| 32 KiB | OpenAI AGENTS.md 级联文件的大小上限 | Prompt Construction |
-| 6 类 | Claude Code 工具分类（文件/搜索/执行/网络/代码智能/subagent） | Tools |
-| ~40 个 | Claude Code 独立门控的离散工具能力 | Guardrails and Safety |
-| 99% × 10 步 → ~90.4% | 错误复利 | Error Handling |
-| 2 次 | Stripe 生产 harness 的重试上限 | Error Handling |
-| 2–3x | 给模型验证手段带来的质量提升（Boris Cherny） | Verification Loops |
-| 3.6x | LLMCompiler 相对顺序 ReAct 的加速 | Seven Decisions 第 2 条 |
-| 26–54% / 95%+ | ACON：token 降幅与保持的准确率（优先保留推理轨迹而非原始工具输出） | Seven Decisions 第 3 条 |
-| 80% | Vercel 从 v0 移除的工具比例，效果反而更好 | Seven Decisions 第 6 条 |
-| 95% | Claude Code 靠懒加载实现的上下文缩减 | Seven Decisions 第 6 条 |
-| 5 次 / 6 个月 | Manus 的重写次数与周期 | The Scaffolding Metaphor |
+来源：*What Is the Agent Harness?*，作者引述 LangChain 的 Vivek Trivedy。
 
-## 概念解释
+在这个定义下，提示词工程处理指令，上下文工程处理模型看到什么、何时看到，harness 工程还要覆盖工具编排、状态持久化、错误恢复、验证和权限。这解释了为什么只调整提示词无法覆盖文中列举的生产问题：消息怎样保存、工具失败怎样反馈、动作是否允许执行，都需要系统提供具体机制。来源：*Three Levels of Engineering*。
 
-### harness 的组成（原文称 12 项，实列 11 项）
+文章开头用一个案例支持“外围系统会显著影响表现”的观点：作者称 LangChain 在模型和权重不变时，仅修改外围基础设施，就从 TerminalBench 2.0 前 30 名之外升至第 5。原文没有附该结果的评测日期或快照，因此这里保留为作者引用的案例，不把排名变化当作已复现的实验结果。来源：正文开篇、*The Harness Is the Product*。
 
-1. **Orchestration Loop** — TAO（Thought-Action-Observation，即 ReAct）循环；机械上常只是一个 while 循环，「The complexity lives in everything the loop manages」。Anthropic 自述为 "dumb loop"，智能全在模型里。
-2. **Tools** — 以 schema 注入上下文；工具层负责注册、校验、参数抽取、沙箱执行、结果格式化。
-3. **Memory** — 短期（会话内）与长期（跨会话）；Claude Code 三级结构：轻量索引（始终加载）→ 按需拉取的主题文件 → 仅可搜索的原始 transcript。关键设计原则：**把自身记忆当 "hint"，行动前先对真实状态核验**。
-4. **Context Management** — 五种生产策略：compaction、observation masking（JetBrains Junie 隐藏旧工具输出但保留调用可见）、just-in-time 检索（grep/glob/head/tail 而非整文件）、subagent 委派、结构化笔记。目标是「smallest possible set of high-signal tokens」。
-5. **Prompt Construction** — 分层拼装；OpenAI Codex 用严格优先级栈：服务端 system message > 工具定义 > developer 指令 > user 指令（级联 AGENTS.md）> 会话历史。
-6. **Output Parsing** — 依赖原生 tool calling 返回结构化 `tool_calls`；有 tool call 就执行并继续，没有即最终答案。
-7. **State Management** — LangGraph 用类型化字典 + reducer 在 super-step 边界 checkpoint（支持恢复与时间旅行调试）；Claude Code 用 git commit 当检查点、progress 文件当结构化草稿纸。
-8. **Error Handling** — LangGraph 区分四类错误：transient（退避重试）、LLM-recoverable（作为 ToolMessage 回喂让模型调整）、user-fixable（中断交人）、unexpected（上抛调试）。
-9. **Guardrails and Safety** — OpenAI SDK 三层：input / output / tool guardrail，触发 "tripwire" 立即停机。Anthropic 在架构上把权限执行与模型推理分离：「The model decides what to attempt; the tool system decides what's allowed.」
-10. **Verification Loops** — 见核心判断 9。
-11. **Subagent Orchestration** — Claude Code 三种执行模型：Fork（父上下文逐字节副本）、Teammate（独立终端面板 + 文件邮箱）、Worktree（独立 git worktree 与分支）；OpenAI SDK 则是 agents-as-tools 与 handoffs 两种。
+## 2. 循环把输入、动作、反馈接起来，可靠性取决于每个环节
 
-### 单轮循环的七个步骤
+文章给出的单轮流程是：
 
-Prompt Assembly → LLM Inference → Output Classification → Tool Execution（只读可并发、写操作串行）→ Result Packaging（错误也作为结果回喂）→ Context Update（接近上限触发 compaction）→ Loop。
+**组装输入 → 调用模型 → 判断输出 → 校验并执行工具 → 包装结果 → 更新上下文 → 下一轮。**
 
-终止条件是分层的：无 tool call、超最大轮数、token 预算耗尽、guardrail tripwire、用户中断、安全拒绝。
+模型返回最终文本时可以结束；请求工具调用时则继续执行和反馈。工具执行环节还要处理参数校验、权限检查、沙箱和结果收集。文章强调，工具错误也应被包装为模型能够看到的结果，模型才有机会根据失败原因调整下一步。来源：*The Loop in Motion: A Step-by-Step Walkthrough*。
 
-### 跨上下文窗口的长任务
+这也是各个组件之间的关系：工具定义告诉模型有哪些能力，输出解析识别模型请求了什么，工具系统负责实际执行，状态管理记录发生过什么，上下文管理决定下一轮保留什么。编排循环把这些工作连接起来。原文的说法是：
 
-Anthropic 的 "Ralph Loop" 两阶段：**Initializer Agent** 先搭环境（init 脚本、progress 文件、feature 列表、首次 git commit），之后每个会话的 **Coding Agent** 读 git log 与 progress 文件自我定位、挑最高优先级的未完成 feature、干活、提交、写总结。**文件系统提供跨窗口的连续性。**
+> “The complexity lives in everything the loop manages, not the loop itself.”
 
-### 七个架构取舍
+来源：*The Orchestration Loop*。
 
-单 agent vs 多 agent｜ReAct vs plan-and-execute｜上下文管理策略（五选一）｜验证回路设计（计算式 vs 推断式，即 Martin Fowler 团队的 guides/sensors）｜权限宽松 vs 严格｜工具范围（越少越好）｜harness 厚度（Anthropic 押薄 harness + 模型进步，图框架押显式控制）。
+动作的选择与动作的许可也有不同职责。作者转述 Anthropic 的做法：模型决定尝试什么，工具系统决定允许什么；并以 OpenAI SDK 的输入、输出和工具 guardrails 为另一种实现例子。来源：*Guardrails and Safety*。这部分讨论的是系统怎样执行约束，不能仅凭模型提出了调用就跳过权限判断。
 
-### 共演化（co-evolution）
+循环还需要明确的结束条件。原文列举了正常结束、最大轮数、token 预算、安全规则触发和用户中断；是否继续工作由运行系统共同控制。来源：*The Loop in Motion: A Step-by-Step Walkthrough* 的终止条件。
 
-模型现在是在特定 harness 在环的情况下 post-train 的。Claude Code 的模型学会了配合它被训练时的那套 harness，「Changing tool implementations can degrade performance because of this tight coupling.」*归纳*：这意味着换 harness 不是免费的重构，存在训练时的耦合成本。
+## 3. 上下文需要选择和维护，记忆也要回到真实状态核验
+
+作者认为，上下文增长会带来信息定位和指令遵循方面的问题，扩大窗口不能消除管理需求。文中讨论了几种不同的处理方式：
+
+- **压缩历史**：把旧对话浓缩为摘要，保留关键决策和未解决事项。
+- **隐藏旧观察**：减少旧工具输出占用的空间，同时保留调用记录。
+- **按需检索**：先保存轻量索引或标识，需要细节时再读取文件和原始记录。
+- **委派子任务**：让子 Agent 处理局部信息，向主流程返回摘要。
+
+来源：*Context Management*；*Seven Decisions That Define Every Harness* 第 3 项还讨论了结构化笔记等策略。
+
+记忆管理与此相连。作者以 Claude Code 的轻量索引、按需加载主题文件和可检索原始记录为例，说明不同层次的信息可以采用不同加载方式，并强调自身记忆应当作为提示，采取行动前仍要核验实际状态。来源：*Memory*。这些具体机制是文章对产品实现的描述，本条目未核验其当前版本。
+
+**归纳**：这几类策略改变的是信息的表示、可见性或处理位置，不能简单互换。阅读和设计时需要继续追问：下一步必须知道什么，哪些记录可以暂时不加载，哪些信息只能压缩而不能丢掉。原文没有给出适用于所有任务的固定选择顺序。
+
+## 4. 多步任务需要同时处理恢复、进度和结果验证
+
+文章用一个简化例子说明长流程的可靠性问题：十个步骤各有 99% 的成功率，整体成功率约为 90.4%。**归纳**：这一乘法示意依赖各步骤成功概率可以相乘的假设，不是实际 Agent 的测量数据；它用于说明局部成功率较高仍可能累积成整体失败。来源：*Error Handling*。
+
+应对失败时，作者转述 LangGraph 的分类：临时故障可以退避重试，模型可恢复的问题作为工具消息交回模型，需要用户处理的问题中断等待输入，意外错误则上抛排查。这里的关键是根据错误性质选择恢复路径，避免把所有失败都交给同一种重试策略。来源：*Error Handling*。
+
+进度保存解决另一个问题：任务跨越上下文窗口后，新的会话怎样知道已完成什么。文章描述了一种初始化与后续执行分开的方式：先建立环境、任务列表和进度文件，后续会话读取这些记录，选择未完成任务，执行并更新状态；也介绍了 LangGraph 的检查点等机制。来源：*State Management*、*The Loop in Motion: A Step-by-Step Walkthrough* 末段。该模式在文中被称为两阶段“Ralph Loop”，其命名和归属本次未核验。
+
+保存进度后仍要判断结果是否正确。文章列举测试、lint 和类型检查等规则反馈，截图等视觉反馈，以及 LLM-as-judge；这些反馈会影响是否继续修改或结束任务。作者引用 Boris Cherny 的“提供验证手段可带来 2–3 倍质量提升”来强调价值，但未给出该数字的任务范围和测量细节，因此不能把它当成通用收益保证。来源：*Verification Loops*、*Seven Decisions That Define Every Harness* 第 4 项。
+
+## 5. 控制复杂度需要取舍，也要考虑模型与工具的耦合
+
+文章最后把 harness 比作脚手架：模型还做不到的工作，需要外围机制支持；当模型能力提高时，应重新检查这些机制是否仍然必要。作者以 Manus 多次重写并减少复杂度的经历支持这一方向，并提出一个设计检查问题：换用更强模型后，系统能否在不增加 harness 复杂度的情况下获得提升？来源：*The Scaffolding Metaphor*。
+
+这并不自动决定每项架构选择。文章还对比了三类相连的取舍：
+
+- 单 Agent 与多 Agent：作者转述 Anthropic、OpenAI 的建议，先充分使用单 Agent；工具职责过度重叠或任务域明显分离时再考虑拆分，同时计算路由调用和交接信息损失。
+- 灵活循环与显式计划或状态图：前者允许交错推理和行动，后者把更多控制逻辑放在系统里；文章介绍了两种路线，没有给出统一优胜者。
+- 工具范围与能力覆盖：作者建议按当前步骤暴露所需工具，避免工具定义过多增加选择和上下文负担。
+
+来源：*How Real Frameworks Implement the Pattern*、*Seven Decisions That Define Every Harness* 第 1、2、6、7 项。
+
+与此同时，作者指出模型可能已经在特定 harness 中接受训练，更换工具实现也可能降低表现。**归纳**：模型变强后简化外围控制是一种设计方向，模型与现有工具的耦合则是调整时需要验证的约束；不能把“更薄”直接当作质量结论。来源：*The Scaffolding Metaphor*。
+
+## 材料边界与待核实事项
+
+本文是跨厂商的工程综述，不是具有统一任务、模型和指标的对照实验。原文标题称有 12 个组件，正文只编号列出 11 个，本条目未补写第 12 项。
+
+部分性能结论缺少直接出处：76.4% 通过率对应的研究未具名，ACON 与 LLMCompiler 的结果未附论文链接；关于上下文衰减、工具数量和具体产品内部机制的描述，也需要回到研究或对应版本文档核验。本次只根据已有 raw 重写，未新增外部事实核查。
+
+现有 raw 的处理记录说明，正文来自第三方 clipping，并与另一份同源转录比对；这保留了文章内容的一致性线索，但不能独立验证文章引用的研究、产品实现或历史归属。
 
 ## 关联条目
 
-- [Agent 后端的三层架构：从循环到可维护系统](agent-backend-architecture.md) — 实现层：把同一个循环拆成领域/应用/适配三层，并用另一次模型调用审核工具调用。
-- 尚未入库、仅搜索所见（未核实）：Addy Osmani `addyosmani.com/blog/agent-harness-engineering/`；Arize、Snowflake、puppygraph 的 "what is an agent harness" 术语条目。
-
-## 未解决问题
-
-- **原文自相矛盾**：小节标题写 "The 12 Components"，实际只列 11 项。第 12 项是什么，原文未给，本条目不做补写。
-- 文中 "The term was formalized in early 2026" 未给出形式化来源（谁、在哪篇文献里定义）。
-- 76.4% 通过率的"separate research project"未具名，无法回溯。
-- TerminalBench 2.0 的排名变化（top 30 外 → 第 5）未给评测快照或日期。
-- ACON、LLMCompiler 等研究仅有一句结论，未附论文链接。
-- 原文关于 Claude Code 内部机制（~40 个工具能力、三级记忆、Ralph Loop）属二手转述，未标注 Anthropic 官方出处，引用时应回溯一手文档；Ralph Loop 被归给 Anthropic，但 `ghuntley.com/loop/`（2026-01-17）自引「the original ralph post」，更可能是 Huntley 提出的模式，Anthropic 做了两阶段实现。
+- [Agent 后端的三层架构：从循环到可维护系统](agent-backend-architecture.md)：提供一个组织对话状态、模型调用、工具执行与入口适配的设计示例，具体说明如何把部分 harness 职责放进领域层、应用层和适配层。它采用额外模型审核工具调用，未覆盖本文讨论的全部恢复、权限和验证机制。
 
 ## 来源
 
-- raw：`../../raw/ai-agents/agent-harness-anatomy.md`（正文全文 + 获取途径与清洗说明）
-- 原始 URL：https://x.com/akshay_pachaar/article/2041146899319971922
-- 作者：Akshay Pachaar (@akshay_pachaar)
-- 发布：2026-04-06T13:31:58Z（据 X status API 时间戳与转录页元数据）
-- 抓取：2026-10-23
+- 原始文章：[The Anatomy of an Agent Harness](https://x.com/akshay_pachaar/article/2041146899319971922)
+- 作者：Akshay Pachaar（@akshay_pachaar）
+- 发布日期：2026-04-06
+- [raw：全文及获取、清洗说明](../../raw/ai-agents/agent-harness-anatomy.md)
+- 材料获取日期：2026-10-23；本次重写基于已有 raw。
